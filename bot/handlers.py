@@ -224,7 +224,7 @@ async def cmd_dl(message: Message) -> None:
                 # Storing "file" (+ extension) hides the real name from anyone
                 # who inspects the archive without knowing the password.
                 internal_name = "file" + os.path.splitext(original_filename)[1]
-                with zf.open(internal_name, 'w') as dest:
+                with zf.open(internal_name, 'w', force_zip64=True) as dest:
                     with open(local_path, 'rb') as src:
                         while True:
                             chunk = src.read(CHUNK)
