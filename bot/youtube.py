@@ -270,4 +270,21 @@ def download(video_id: str, format_key: str, output_path: str, progress_hook=Non
         with yt_dlp.YoutubeDL(opts) as ydl:
             ydl.download([url])
     except yt_dlp.utils.DownloadError as exc:
-        raise YouTubeError(f"❌ Download failed: {exc}") from exc
+        # If the error is specifically about subtitles (like HTTP 429), retry without them.
+        if "subtitle" in str(exc).lower():
+            log.warning("Subtitle download failed, retrying without subtitles...")
+            opts["writesubtitles"] = False
+            opts["writeautomaticsub"] = False
+            opts.pop("subtitleslangs", None)
+            if "postprocessors" in opts:
+                opts["postprocessors"] = [
+                    pp for pp in opts["postprocessors"]
+                    if pp.get("key") != "FFmpegEmbedSubtitle"
+                ]
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl_fallback:
+                    ydl_fallback.download([url])
+            except yt_dlp.utils.DownloadError as exc_fallback:
+                raise YouTubeError(f"❌ Download failed: {exc_fallback}") from exc_fallback
+        else:
+            raise YouTubeError(f"❌ Download failed: {exc}") from exc
