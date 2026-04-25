@@ -11,10 +11,8 @@ import secrets
 import urllib.parse
 import aiohttp
 import aiofiles
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.backends import default_backend
+import pyzipper
+import shutil
 import feedparser
 
 from aiogram import F, Router
@@ -160,7 +158,7 @@ async def cmd_dl(message: Message) -> None:
         
         unique_id = uuid.uuid4().hex[:8]
         local_path = os.path.join(DOWNLOAD_DIR, f"dl_{unique_id}_{original_filename}")
-        zip_path = f"{local_path}.enc"
+        zip_path = f"{local_path}.zip"
 
         # 1. Download
         state.action = "⬇️ Downloading file..."
@@ -194,58 +192,31 @@ async def cmd_dl(message: Message) -> None:
             state.percentage = 100.0
             state.speed = _format_size(downloaded) + " total"
 
-        # 2. Encrypt (streaming AES-256-CTR — constant ~64 KB RAM regardless of file size)
+        # 2. Encrypt — streaming AES-256 ZIP (64 KB chunks, constant RAM usage)
         state.action = "🔒 Encrypting file (AES-256)..."
         state.speed = ""
         state.eta = ""
         
         password = secrets.token_urlsafe(12)
         
-        def stream_encrypt_file():
-            """Encrypt input file to output using AES-256-CTR in 64 KB chunks.
+        def zip_and_encrypt_streaming():
+            """Write an AES-256 encrypted ZIP in 64 KB chunks via zf.open().
             
-            File layout: salt(16) | nonce(16) | ciphertext
-            Decrypt with:
-              python3 -c "
-              import os, sys
-              from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-              from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-              from cryptography.hazmat.primitives import hashes
-              from cryptography.hazmat.backends import default_backend
-              with open('file.enc','rb') as f:
-                  salt,nonce,ct = f.read(16),f.read(16),f.read()
-              kdf=PBKDF2HMAC(algorithm=hashes.SHA256(),length=32,salt=salt,iterations=200000,backend=default_backend())
-              key=kdf.derive(b'PASSWORD')
-              dec=Cipher(algorithms.AES(key),modes.CTR(nonce),backend=default_backend()).decryptor()
-              open('output_file','wb').write(dec.update(ct)+dec.finalize())
-              "
+            Uses pyzipper's streaming write API instead of zf.write(), so the
+            source file is never fully loaded into RAM. Output is a standard
+            AES-256 ZIP openable with 7-Zip or WinRAR on Windows.
             """
-            salt = os.urandom(16)
-            nonce = os.urandom(16)
-            kdf = PBKDF2HMAC(
-                algorithm=hashes.SHA256(),
-                length=32,
-                salt=salt,
-                iterations=200_000,
-                backend=default_backend(),
-            )
-            key = kdf.derive(password.encode('utf-8'))
-            encryptor = Cipher(
-                algorithms.AES(key), modes.CTR(nonce), backend=default_backend()
-            ).encryptor()
-            
-            CHUNK = 65536  # 64 KB
-            with open(local_path, 'rb') as src, open(zip_path, 'wb') as dst:
-                dst.write(salt)
-                dst.write(nonce)
-                while True:
-                    chunk = src.read(CHUNK)
-                    if not chunk:
-                        break
-                    dst.write(encryptor.update(chunk))
-                dst.write(encryptor.finalize())
+            with pyzipper.AESZipFile(
+                zip_path, 'w',
+                compression=pyzipper.ZIP_STORED,
+                encryption=pyzipper.WZ_AES,
+            ) as zf:
+                zf.setpassword(password.encode('utf-8'))
+                with zf.open(original_filename, 'w') as dest:
+                    with open(local_path, 'rb') as src:
+                        shutil.copyfileobj(src, dest, length=65536)
                 
-        await asyncio.to_thread(stream_encrypt_file)
+        await asyncio.to_thread(zip_and_encrypt_streaming)
 
         # 3. Upload to Google Drive
         def drive_progress_hook(progress: float):
@@ -254,7 +225,7 @@ async def cmd_dl(message: Message) -> None:
             state.speed = ""
             state.eta = ""
 
-        drive_filename = f"{original_filename}.enc"
+        drive_filename = f"{original_filename}.enc.zip"
 
         result = await asyncio.to_thread(
             drive.upload, zip_path, drive_filename, drive_progress_hook
@@ -271,14 +242,10 @@ async def cmd_dl(message: Message) -> None:
             "✅ <b>Upload complete!</b>\n\n"
             f"🔗 <a href='{view_link}'>Open in Google Drive</a>\n"
             f"⬇️ <a href='{direct_link}'>Direct Download Link</a>\n\n"
-            "🔑 <b>Decryption password:</b>\n"
+            "🔑 <b>Password to extract:</b>\n"
             f"<code>{password}</code>\n\n"
-            "🔓 <b>To decrypt (Python 3):</b>\n"
-            "<pre>"
-            "python3 decrypt.py file.enc output_file PASSWORD"
-            "</pre>\n"
-            "<i>The file is AES-256-CTR encrypted. "
-            "Keep this password safe — without it you cannot recover your file!</i>"
+            "<i>Open the .zip with 7-Zip or WinRAR and enter the password above.\n"
+            "Keep this password safe — without it you cannot access your file!</i>"
         )
         
         await _safe_edit_caption_or_text(status_msg, final_text, parse_mode="HTML")
