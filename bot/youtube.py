@@ -50,12 +50,6 @@ def _ydl_opts_base() -> dict:
         # Node is installed in the container but yt-dlp only auto-enables
         # Deno; other runtimes must be opted-in explicitly.
         "js_runtimes": {"node": {}},
-        # Impersonate mobile clients to bypass YouTube's datacenter rate limiting (~100KB/s)
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android", "ios", "web"]
-            }
-        },
         # Limit download speed to ~30MB/s (value is in bytes/second)
         "ratelimit": 30 * 1024 * 1024,
     }
