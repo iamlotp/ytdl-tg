@@ -12,7 +12,6 @@ import urllib.parse
 import aiohttp
 import aiofiles
 import pyzipper
-import shutil
 import feedparser
 
 from aiogram import F, Router
@@ -193,7 +192,8 @@ async def cmd_dl(message: Message) -> None:
             state.speed = _format_size(downloaded) + " total"
 
         # 2. Encrypt — streaming AES-256 ZIP (64 KB chunks, constant RAM usage)
-        state.action = "🔒 Encrypting file (AES-256)..."
+        state.action = "🔒 Encrypting..."
+        state.percentage = 0.0
         state.speed = ""
         state.eta = ""
         
@@ -201,21 +201,40 @@ async def cmd_dl(message: Message) -> None:
         
         def zip_and_encrypt_streaming():
             """Write an AES-256 encrypted ZIP in 64 KB chunks via zf.open().
-            
-            Uses pyzipper's streaming write API instead of zf.write(), so the
-            source file is never fully loaded into RAM. Output is a standard
-            AES-256 ZIP openable with 7-Zip or WinRAR on Windows.
+
+            - Uses pyzipper's streaming write API (never loads full file into RAM)
+            - Manual chunk loop so we can report progress to state.percentage
+            - Manual try/finally close to absorb pyzipper's spurious
+              'open writing handle' ValueError on close
             """
-            with pyzipper.AESZipFile(
+            file_size = os.path.getsize(local_path)
+            encrypted = 0
+            CHUNK = 65536  # 64 KB
+
+            zf = pyzipper.AESZipFile(
                 zip_path, 'w',
                 compression=pyzipper.ZIP_STORED,
                 encryption=pyzipper.WZ_AES,
-            ) as zf:
+            )
+            try:
                 zf.setpassword(password.encode('utf-8'))
                 with zf.open(original_filename, 'w') as dest:
                     with open(local_path, 'rb') as src:
-                        shutil.copyfileobj(src, dest, length=65536)
-                
+                        while True:
+                            chunk = src.read(CHUNK)
+                            if not chunk:
+                                break
+                            dest.write(chunk)
+                            encrypted += len(chunk)
+                            if file_size > 0:
+                                state.percentage = (encrypted / file_size) * 100
+            finally:
+                try:
+                    zf.close()
+                except ValueError as ve:
+                    if "open writing handle" not in str(ve):
+                        raise
+
         await asyncio.to_thread(zip_and_encrypt_streaming)
 
         # 3. Upload to Google Drive
