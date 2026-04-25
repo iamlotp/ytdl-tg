@@ -215,6 +215,7 @@ async def cmd_dl(message: Message) -> None:
                 zip_path, 'w',
                 compression=pyzipper.ZIP_STORED,
                 encryption=pyzipper.WZ_AES,
+                allowZip64=True,
             )
             try:
                 zf.setpassword(password.encode('utf-8'))
