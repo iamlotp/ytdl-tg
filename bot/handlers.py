@@ -199,7 +199,7 @@ async def cmd_dl(message: Message) -> None:
         password = secrets.token_urlsafe(12)
         
         def zip_and_encrypt_file():
-            with pyzipper.AESZipFile(zip_path, 'w', compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES) as zf:
+            with pyzipper.AESZipFile(zip_path, 'w', compression=pyzipper.ZIP_STORED, encryption=pyzipper.WZ_AES) as zf:
                 zf.setpassword(password.encode('utf-8'))
                 zf.write(local_path, arcname=original_filename)
                 
