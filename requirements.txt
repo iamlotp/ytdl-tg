@@ -1,0 +1,9 @@
+aiogram>=3.7,<4.0
+yt-dlp[default]>=2024.1.1
+google-api-python-client>=2.100.0
+google-auth-httplib2>=0.2.0
+google-auth-oauthlib>=1.2.0
+pyzipper>=0.3.6
+aiohttp>=3.11.0
+aiofiles>=24.1.0
+feedparser>=6.0.11
