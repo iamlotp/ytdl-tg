@@ -12,3 +12,8 @@ services:
     # Adjust tmpfs size to match your server's available RAM.
     tmpfs:
       - /tmp/ytdl:size=4g,mode=1777
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
