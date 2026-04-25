@@ -218,7 +218,12 @@ async def cmd_dl(message: Message) -> None:
             )
             try:
                 zf.setpassword(password.encode('utf-8'))
-                with zf.open(original_filename, 'w') as dest:
+                # Use a generic internal name — ZIP stores filenames in plaintext
+                # in its central directory, visible without the password.
+                # Storing "file" (+ extension) hides the real name from anyone
+                # who inspects the archive without knowing the password.
+                internal_name = "file" + os.path.splitext(original_filename)[1]
+                with zf.open(internal_name, 'w') as dest:
                     with open(local_path, 'rb') as src:
                         while True:
                             chunk = src.read(CHUNK)
@@ -263,8 +268,11 @@ async def cmd_dl(message: Message) -> None:
             f"⬇️ <a href='{direct_link}'>Direct Download Link</a>\n\n"
             "🔑 <b>Password to extract:</b>\n"
             f"<code>{password}</code>\n\n"
-            "<i>Open the .zip with 7-Zip or WinRAR and enter the password above.\n"
-            "Keep this password safe — without it you cannot access your file!</i>"
+            "📄 <b>Original filename:</b>\n"
+            f"<code>{_escape_html(original_filename)}</code>\n\n"
+            "<i>Open the .zip with 7-Zip or WinRAR, enter the password above,\n"
+            "then rename the extracted file to the original filename.\n"
+            "The filename inside the archive is intentionally generic to keep it private.</i>"
         )
         
         await _safe_edit_caption_or_text(status_msg, final_text, parse_mode="HTML")
