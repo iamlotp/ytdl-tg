@@ -3,15 +3,15 @@ services:
     build: .
     env_file: .env
     restart: unless-stopped
+    environment:
+      - DOWNLOAD_DIR=/downloads
     volumes:
       # Service account JSON — REQUIRED
       - ./config:/config:ro
       # Optional cookies.txt for age-restricted content
       - ./cookies:/cookies
-    # Prevents the container from using all disk space if /tmp fills up.
-    # Adjust tmpfs size to match your server's available RAM.
-    tmpfs:
-      - /tmp/ytdl:size=4g,mode=1777
+      # Disk-backed download staging area (uses /dev/sda1 space, not RAM)
+      - ./downloads:/downloads
     logging:
       driver: "json-file"
       options:
