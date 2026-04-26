@@ -261,6 +261,10 @@ def download(video_id: str, format_key: str, output_path: str, progress_hook=Non
                 "preferedformat": "mp4",
             },
             {
+                "key": "FFmpegSubtitlesConvertor",
+                "format": "srt",
+            },
+            {
                 "key": "FFmpegEmbedSubtitle",
             }
         ]

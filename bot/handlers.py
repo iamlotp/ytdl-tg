@@ -730,13 +730,28 @@ async def handle_download_callback(callback: CallbackQuery) -> None:
         state.done = True
         updater_task.cancel()
         # Always clean up local files to prevent disk bloat
-        for path in [local_path, actual_path if "actual_path" in dir() else local_path]:
-            try:
-                if path and os.path.isfile(path):
-                    os.remove(path)
-                    logger.debug("Cleaned up %s", path)
-            except OSError as exc:
-                logger.warning("Failed to delete temp file %s: %s", path, exc)
+        import glob
+        # We need to clean up local_path, actual_path, and any other generated files like subtitles (.en.vtt, .srt)
+        base_name = os.path.splitext(local_path)[0]
+        cleanup_patterns = [
+            local_path,
+            actual_path if "actual_path" in locals() else local_path,
+            f"{base_name}*.*", # catches subtitle files with the same base name
+            f"{local_path}*"   # catches subtitle files appended to the local path
+        ]
+        
+        cleaned = set()
+        for pattern in cleanup_patterns:
+            if not pattern:
+                continue
+            for path in glob.glob(pattern):
+                if path not in cleaned and os.path.isfile(path):
+                    try:
+                        os.remove(path)
+                        logger.debug("Cleaned up %s", path)
+                        cleaned.add(path)
+                    except OSError as exc:
+                        logger.warning("Failed to delete temp file %s: %s", path, exc)
 
 
 # ---------------------------------------------------------------------------
