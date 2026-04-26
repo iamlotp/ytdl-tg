@@ -7,3 +7,4 @@ pyzipper>=0.3.6
 aiohttp>=3.11.0
 aiofiles>=24.1.0
 feedparser>=6.0.11
+telethon>=1.36.0

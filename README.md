@@ -11,9 +11,10 @@ A Dockerized Telegram bot that downloads YouTube videos (via **yt-dlp** + **ffmp
 | Quality selection | 1440p (2K) · 1080p · 720p · 480p · MP3 Audio |
 | Live Progress Bar | Real-time downloading & uploading progress, speed, and ETA |
 | Dynamic Naming | Files are natively named `[Title] - [Quality].[ext]` on Drive |
+| File → Drive | Send any file (document/photo/video/audio) to the bot — uploads directly to Google Drive |
 | Live stream guard | Live streams are detected and rejected before download |
 | Whitelist | Only pre-approved Telegram user IDs can use the bot |
-| Disk safety | `try/finally` deletes local files after upload; tmpfs staging directory |
+| Disk safety | `try/finally` deletes local files after upload; disk-backed staging directory |
 | Age-restricted | Optional `cookies.txt` mount for bypassing soft age gates |
 
 ---
@@ -27,6 +28,7 @@ A Dockerized Telegram bot that downloads YouTube videos (via **yt-dlp** + **ffmp
 - `/lookup_pod [query]` - Searches the iTunes directory for podcasts matching the query and returns the top 5 results with their RSS feeds
 - `/pod [rss-link]` - Fetches the 5 most recent episodes from a podcast RSS feed with audio download links
 - **Send a YouTube link** - Interactive menu to select video quality or extract audio, then directly uploads the result to Google Drive
+- **Send any file** - Documents, photos, videos, audio, voice notes, and video notes are downloaded via MTProto and uploaded to a dedicated "Telegram Uploads" subfolder on Google Drive
 
 ---
 
@@ -35,6 +37,7 @@ A Dockerized Telegram bot that downloads YouTube videos (via **yt-dlp** + **ffmp
 - Docker & Docker Compose v2
 - A Telegram Bot Token from [@BotFather](https://t.me/BotFather)
 - A Google Cloud **Service Account** with Google Drive API enabled
+- **Telegram API credentials** (`api_id` + `api_hash`) from [my.telegram.org](https://my.telegram.org/auth) — required for the file-to-Drive feature
 
 ---
 
@@ -78,6 +81,8 @@ Fill in `.env`:
 BOT_TOKEN=123456:ABCdef...           # from @BotFather
 WHITELIST_IDS=123456789              # your Telegram user ID (get it from @userinfobot)
 DRIVE_FOLDER_ID=1aBcDeFgHiJk...      # Folder ID inside your Drive / Shared Drive
+TELEGRAM_API_ID=12345678             # from https://my.telegram.org/auth
+TELEGRAM_API_HASH=abcdef1234567890   # from https://my.telegram.org/auth
 ```
 
 ### 3. (Optional) Cookies for age-restricted content
@@ -134,6 +139,8 @@ docker compose up -d --build
 | `BOT_TOKEN` | ✅ | Telegram bot token from @BotFather |
 | `WHITELIST_IDS` | ✅ | Comma-separated allowed Telegram user IDs |
 | `DRIVE_FOLDER_ID` | ✅ | Target Google Drive folder ID |
+| `TELEGRAM_API_ID` | ✅ | Telegram API ID from my.telegram.org (for file-to-Drive) |
+| `TELEGRAM_API_HASH` | ✅ | Telegram API hash from my.telegram.org (for file-to-Drive) |
 | `SERVICE_ACCOUNT_PATH` | ❌ | Path to service account JSON (default: `/config/service_account.json`) |
 | `TOKEN_PATH` | ❌ | Path to OAuth token.json (default: `/config/token.json`) |
 | `COOKIES_PATH` | ❌ | Path to cookies.txt (default: `/cookies/cookies.txt`) |

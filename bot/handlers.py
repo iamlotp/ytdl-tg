@@ -95,6 +95,7 @@ async def cmd_start(message: Message) -> None:
         "Send /udl [link] to download an arbitrary direct link without encryption, and upload to Google Drive.\n"
         "Send /lookup_pod [query] to search for podcasts.\n"
         "Send /pod [rss-link] to get the latest episodes of a podcast.\n\n"
+        "📎 <b>Send any file</b> (document, photo, video, audio) and I'll upload it directly to Google Drive.\n\n"
         "<b>Supported formats:</b> 1440p · 1080p · 720p · 480p · MP3 Audio",
         parse_mode="HTML",
     )
@@ -116,6 +117,7 @@ async def cmd_help(message: Message) -> None:
         "• /udl [link] - Download without encryption and upload to Google Drive\n"
         "• /lookup_pod [query] - Search iTunes for podcasts\n"
         "• /pod [rss-link] - Fetch latest 5 episodes from a podcast RSS feed\n\n"
+        "📎 <b>Send any file</b> directly to upload it to Google Drive.\n\n"
         "<i>Just send a YouTube link to download a video/audio track directly to Google Drive!</i>",
         parse_mode="HTML"
     )
@@ -735,6 +737,135 @@ async def handle_download_callback(callback: CallbackQuery) -> None:
                     logger.debug("Cleaned up %s", path)
             except OSError as exc:
                 logger.warning("Failed to delete temp file %s: %s", path, exc)
+
+
+# ---------------------------------------------------------------------------
+# File → Google Drive handler (documents, photos, videos, audio, voice, etc.)
+# ---------------------------------------------------------------------------
+@router.message(F.document | F.photo | F.video | F.audio | F.voice | F.video_note)
+async def handle_file_to_drive(message: Message) -> None:
+    """Receive any file sent to the bot, download via MTProto, upload to Drive."""
+    if not _is_allowed(message.from_user.id):
+        return
+
+    # Ensure the Telethon client is available
+    from . import telegram_client
+    if not telegram_client.is_available():
+        await message.answer(
+            "⚠️ <b>File uploads are disabled.</b>\n"
+            "<i>TELEGRAM_API_ID and TELEGRAM_API_HASH are not configured.</i>",
+            parse_mode="HTML",
+        )
+        return
+
+    # --- Extract file metadata based on message type ---
+    if message.document:
+        file_name = message.document.file_name or "document"
+        file_size = message.document.file_size or 0
+    elif message.photo:
+        # Photos arrive as a list of sizes — take the largest
+        file_name = f"photo_{message.message_id}.jpg"
+        file_size = message.photo[-1].file_size or 0
+    elif message.video:
+        file_name = message.video.file_name or f"video_{message.message_id}.mp4"
+        file_size = message.video.file_size or 0
+    elif message.audio:
+        file_name = message.audio.file_name or f"audio_{message.message_id}.mp3"
+        file_size = message.audio.file_size or 0
+    elif message.voice:
+        file_name = f"voice_{message.message_id}.ogg"
+        file_size = message.voice.file_size or 0
+    elif message.video_note:
+        file_name = f"video_note_{message.message_id}.mp4"
+        file_size = message.video_note.file_size or 0
+    else:
+        return
+
+    # Sanitize filename
+    file_name = re.sub(r'[\\/*?:"<>|]', "-", file_name)
+
+    status_msg = await message.answer(
+        f"📥 <b>Receiving file:</b> <code>{_escape_html(file_name)}</code>\n"
+        f"📦 <b>Size:</b> {_format_size(file_size)}",
+        parse_mode="HTML",
+    )
+
+    state = ProgressState()
+    updater_task = asyncio.create_task(progress_updater(status_msg, state))
+
+    unique_id = uuid.uuid4().hex[:8]
+    local_path = os.path.join(DOWNLOAD_DIR, f"tg_{unique_id}_{file_name}")
+    actual_path = local_path  # Telethon may return a slightly different path
+
+    try:
+        # 1. Download from Telegram via MTProto
+        state.action = "⬇️ Downloading from Telegram..."
+        state.percentage = 0.0
+
+        def tg_progress(current, total):
+            if total > 0:
+                state.percentage = (current / total) * 100
+                state.speed = f"{_format_size(current)} / {_format_size(total)}"
+
+        actual_path = await telegram_client.download_file(
+            chat_id=message.chat.id,
+            message_id=message.message_id,
+            destination=local_path,
+            progress_callback=tg_progress,
+        )
+
+        # 2. Upload to Google Drive (into "Telegram Uploads" subfolder)
+        def drive_progress_hook(progress: float):
+            state.action = "☁️ Uploading to Google Drive..."
+            state.percentage = progress * 100
+            state.speed = ""
+            state.eta = ""
+
+        subfolder_id = await asyncio.to_thread(
+            drive.get_or_create_subfolder, "Telegram Uploads"
+        )
+
+        result = await asyncio.to_thread(
+            drive.upload, actual_path, file_name, drive_progress_hook, subfolder_id
+        )
+
+        state.done = True
+        updater_task.cancel()
+
+        # 3. Reply with links
+        view_link = result["view_link"]
+        direct_link = result["direct_link"]
+
+        final_text = (
+            "✅ <b>Upload complete!</b>\n\n"
+            f"📄 <b>File:</b> <code>{_escape_html(file_name)}</code>\n"
+            f"📦 <b>Size:</b> {_format_size(file_size)}\n\n"
+            f"🔗 <a href='{view_link}'>Open in Google Drive</a>\n"
+            f"⬇️ <a href='{direct_link}'>Direct Download Link</a>"
+        )
+
+        await _safe_edit_caption_or_text(status_msg, final_text, parse_mode="HTML")
+
+    except Exception as exc:
+        logger.exception("File-to-Drive upload failed")
+        state.done = True
+        updater_task.cancel()
+        await _safe_edit_caption_or_text(
+            status_msg, f"❌ Error: {_escape_html(str(exc))}", parse_mode="HTML"
+        )
+
+    finally:
+        state.done = True
+        if not updater_task.done():
+            updater_task.cancel()
+        # Cleanup — delete both the expected and actual paths (may differ)
+        for path in {local_path, actual_path}:
+            if path and os.path.isfile(path):
+                try:
+                    os.remove(path)
+                    logger.debug("Cleaned up %s", path)
+                except OSError as exc:
+                    logger.warning("Failed to delete temp file %s: %s", path, exc)
 
 
 # ---------------------------------------------------------------------------

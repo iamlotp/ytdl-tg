@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     environment:
       - DOWNLOAD_DIR=/downloads
+      - TELEGRAM_API_ID=${TELEGRAM_API_ID}
+      - TELEGRAM_API_HASH=${TELEGRAM_API_HASH}
     volumes:
       # Service account JSON — REQUIRED
       - ./config:/config:ro

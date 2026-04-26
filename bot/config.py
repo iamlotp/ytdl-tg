@@ -31,3 +31,9 @@ COOKIES_PATH: str = os.environ.get("COOKIES_PATH", "/cookies/cookies.txt")
 # Local download staging directory
 # ---------------------------------------------------------------------------
 DOWNLOAD_DIR: str = os.environ.get("DOWNLOAD_DIR", "/tmp/ytdl")
+
+# ---------------------------------------------------------------------------
+# Telegram MTProto credentials (for large file downloads via Telethon)
+# ---------------------------------------------------------------------------
+TELEGRAM_API_ID: int = int(os.environ.get("TELEGRAM_API_ID", "0"))
+TELEGRAM_API_HASH: str = os.environ.get("TELEGRAM_API_HASH", "")

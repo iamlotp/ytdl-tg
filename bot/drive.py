@@ -19,6 +19,9 @@ _SCOPES = ["https://www.googleapis.com/auth/drive"]
 # Module-level cached Drive service (one per container lifetime)
 _drive_service = None
 
+# Module-level cached subfolder ID for Telegram uploads
+_telegram_subfolder_id: Optional[str] = None
+
 
 def _get_service():
     """Return (and cache) an authenticated Drive v3 service resource."""
@@ -42,7 +45,69 @@ def _get_service():
     return _drive_service
 
 
-def upload(filepath: str, filename: str, progress_hook=None) -> dict:
+def get_or_create_subfolder(folder_name: str, parent_id: Optional[str] = None) -> str:
+    """
+    Return the ID of a subfolder named *folder_name* inside the parent.
+    Creates the subfolder if it does not already exist.  The result is
+    cached for the lifetime of the process.
+    """
+    global _telegram_subfolder_id
+    if _telegram_subfolder_id is not None:
+        return _telegram_subfolder_id
+
+    service = _get_service()
+    parent = parent_id or DRIVE_FOLDER_ID
+
+    # Search for an existing subfolder
+    query = (
+        f"name = '{folder_name}' "
+        f"and mimeType = 'application/vnd.google-apps.folder' "
+        f"and trashed = false"
+    )
+    if parent:
+        query += f" and '{parent}' in parents"
+
+    results = (
+        service.files()
+        .list(
+            q=query,
+            spaces="drive",
+            fields="files(id)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
+        .execute()
+    )
+
+    files = results.get("files", [])
+    if files:
+        _telegram_subfolder_id = files[0]["id"]
+        return _telegram_subfolder_id
+
+    # Create the subfolder
+    metadata: dict = {
+        "name": folder_name,
+        "mimeType": "application/vnd.google-apps.folder",
+    }
+    if parent:
+        metadata["parents"] = [parent]
+
+    folder = (
+        service.files()
+        .create(body=metadata, fields="id", supportsAllDrives=True)
+        .execute()
+    )
+
+    _telegram_subfolder_id = folder["id"]
+    return _telegram_subfolder_id
+
+
+def upload(
+    filepath: str,
+    filename: str,
+    progress_hook=None,
+    folder_id: Optional[str] = None,
+) -> dict:
     """
     Upload *filepath* to Google Drive as *filename*.
 
@@ -50,6 +115,10 @@ def upload(filepath: str, filename: str, progress_hook=None) -> dict:
     1. Upload with resumable=True (safe for large files).
     2. Set 'anyone can view' permission immediately.
     3. Return links dict.
+
+    Args:
+        folder_id: Override the target Drive folder.  If *None*, falls back
+                   to the global DRIVE_FOLDER_ID.
 
     Returns:
         {
@@ -70,8 +139,9 @@ def upload(filepath: str, filename: str, progress_hook=None) -> dict:
     media = MediaFileUpload(filepath, mimetype=mime_type, resumable=True, chunksize=10 * 1024 * 1024)
 
     file_metadata: dict = {"name": filename}
-    if DRIVE_FOLDER_ID:
-        file_metadata["parents"] = [DRIVE_FOLDER_ID]
+    target_folder = folder_id or DRIVE_FOLDER_ID
+    if target_folder:
+        file_metadata["parents"] = [target_folder]
 
     # Upload
     request = (
