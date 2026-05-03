@@ -10,6 +10,7 @@ aiogram) and shares the asyncio event loop.  It is used exclusively as a
 download engine; all routing and UI stay in aiogram.
 """
 
+import asyncio
 import logging
 import os
 
@@ -19,13 +20,16 @@ logger = logging.getLogger(__name__)
 
 # Module-level singleton — initialized once in main.py
 _client: TelegramClient | None = None
+_download_semaphore: asyncio.Semaphore | None = None
 
 
 async def init_client(api_id: int, api_hash: str, bot_token: str) -> TelegramClient:
     """Start the Telethon client in bot mode and cache it."""
-    global _client
+    global _client, _download_semaphore
     if _client is not None:
         return _client
+
+    _download_semaphore = asyncio.Semaphore(2)  # Limit concurrent downloads to prevent stalls
 
     # Store session file in the working directory (/app inside Docker)
     _client = TelegramClient(
@@ -91,12 +95,16 @@ async def download_file(
     # Ensure the destination directory exists
     os.makedirs(os.path.dirname(destination), exist_ok=True)
 
-    # Download the file
-    path = await client.download_media(
-        message,
-        file=destination,
-        progress_callback=progress_callback,
-    )
+    # Download the file, limited by semaphore to prevent hanging on multiple files
+    global _download_semaphore
+    sem = _download_semaphore or asyncio.Semaphore(2)
+    
+    async with sem:
+        path = await client.download_media(
+            message,
+            file=destination,
+            progress_callback=progress_callback,
+        )
 
     if path is None:
         raise RuntimeError("Telethon download_media returned None")
