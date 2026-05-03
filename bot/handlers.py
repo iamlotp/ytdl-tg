@@ -165,7 +165,8 @@ async def cmd_dl(message: Message) -> None:
         state.action = "⬇️ Downloading file..."
         state.percentage = 0.0
 
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=0)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url) as response:
                 response.raise_for_status()
                 total_size = int(response.headers.get('Content-Length', 0))
@@ -341,7 +342,8 @@ async def cmd_udl(message: Message) -> None:
         state.action = "⬇️ Downloading file..."
         state.percentage = 0.0
 
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=0)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url) as response:
                 response.raise_for_status()
                 total_size = int(response.headers.get('Content-Length', 0))

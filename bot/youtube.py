@@ -253,7 +253,13 @@ def download(video_id: str, format_key: str, output_path: str, progress_hook=Non
         # Enable English subtitles (manual and auto-generated)
         opts["writesubtitles"] = True
         opts["writeautomaticsub"] = True
-        opts["subtitleslangs"] = ["en.*", "en"]
+        # Provide an explicit list of English variants to ensure all are matched,
+        # with regex as a fallback. yt-dlp will embed all matched languages,
+        # preferring manual over auto-generated for the same language code.
+        opts["subtitleslangs"] = [
+            "en", "en-US", "en-GB", "en-UK", "en-CA", "en-AU", 
+            "en-IE", "en-NZ", "en-ZA", "en-IN", "en-.*", "en.*"
+        ]
         
         opts["postprocessors"] = [
             {
