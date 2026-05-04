@@ -3,7 +3,7 @@ youtube.py — yt-dlp wrapper for metadata extraction and downloading.
 """
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 import yt_dlp
 
@@ -109,7 +109,7 @@ def extract_info(url: str) -> dict:
     return info
 
 
-def _best_audio_format(formats: list[dict]) -> Optional[dict]:
+def _best_audio_format(formats: list[dict]) -> dict | None:
     """Return the single best audio-only format (highest abr/tbr)."""
     audio_fmts = [
         f for f in formats
@@ -122,7 +122,7 @@ def _best_audio_format(formats: list[dict]) -> Optional[dict]:
 
 def _best_video_format_for_height(
     formats: list[dict], target_height: int
-) -> Optional[dict]:
+) -> dict | None:
     """
     Return the best video-only format whose height is <= target_height.
     Prefers the closest match from below; falls back to the nearest above.
@@ -153,7 +153,7 @@ def _best_video_format_for_height(
     return None
 
 
-def _get_size(fmt: Optional[dict]) -> Optional[int]:
+def _get_size(fmt: dict | None) -> int | None:
     """Return filesize or filesize_approx (in bytes), or None."""
     if fmt is None:
         return None
@@ -198,7 +198,7 @@ def get_quality_options(info: dict) -> list[dict]:
 
             # Combined size: video + audio
             if vid_size is not None and audio_size is not None:
-                combined: Optional[int] = vid_size + audio_size
+                combined: int | None = vid_size + audio_size
             elif vid_size is not None:
                 combined = vid_size
             else:
@@ -249,7 +249,7 @@ def download(video_id: str, format_key: str, output_path: str, progress_hook=Non
             f"/bestvideo+bestaudio/best"
         )
         opts["merge_output_format"] = "mp4"
-        
+
         # Enable English subtitles (manual and auto-generated)
         opts["writesubtitles"] = True
         opts["writeautomaticsub"] = True
@@ -257,10 +257,10 @@ def download(video_id: str, format_key: str, output_path: str, progress_hook=Non
         # with regex as a fallback. yt-dlp will embed all matched languages,
         # preferring manual over auto-generated for the same language code.
         opts["subtitleslangs"] = [
-            "en", "en-US", "en-GB", "en-UK", "en-CA", "en-AU", 
+            "en", "en-US", "en-GB", "en-UK", "en-CA", "en-AU",
             "en-IE", "en-NZ", "en-ZA", "en-IN", "en-.*", "en.*"
         ]
-        
+
         opts["postprocessors"] = [
             {
                 "key": "FFmpegVideoConvertor",

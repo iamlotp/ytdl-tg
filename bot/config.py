@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Telegram
@@ -15,12 +14,13 @@ WHITELIST_IDS: set[int] = {
 # ---------------------------------------------------------------------------
 # Google Drive
 # ---------------------------------------------------------------------------
-DRIVE_FOLDER_ID: Optional[str] = os.environ.get("DRIVE_FOLDER_ID") or None
+DRIVE_FOLDER_ID: str | None = os.environ.get("DRIVE_FOLDER_ID") or None
 
 # Path inside the container (mounted via Docker volume)
 SERVICE_ACCOUNT_PATH: str = os.environ.get(
     "SERVICE_ACCOUNT_PATH", "/config/service_account.json"
 )
+TOKEN_PATH: str = os.environ.get("TOKEN_PATH", "/config/token.json")
 
 # ---------------------------------------------------------------------------
 # Optional cookies for age-restricted content
@@ -31,6 +31,9 @@ COOKIES_PATH: str = os.environ.get("COOKIES_PATH", "/cookies/cookies.txt")
 # Local download staging directory
 # ---------------------------------------------------------------------------
 DOWNLOAD_DIR: str = os.environ.get("DOWNLOAD_DIR", "/tmp/ytdl")
+
+# Maximum concurrent download+upload operations
+MAX_CONCURRENT_DOWNLOADS: int = int(os.environ.get("MAX_CONCURRENT_DOWNLOADS", "3"))
 
 # ---------------------------------------------------------------------------
 # Telegram MTProto credentials (for large file downloads via Telethon)

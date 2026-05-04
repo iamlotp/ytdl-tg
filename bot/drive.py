@@ -3,17 +3,16 @@ drive.py — Google Drive upload and permission management via Service Account.
 """
 import os
 import threading
-from typing import Optional
+import time
+from collections.abc import Callable
 
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
+from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaIoBaseUpload
 
-from .config import DRIVE_FOLDER_ID, SERVICE_ACCOUNT_PATH
-
-TOKEN_PATH = "/config/token.json"
-
+from .config import DRIVE_FOLDER_ID, SERVICE_ACCOUNT_PATH, TOKEN_PATH
 
 _SCOPES = ["https://www.googleapis.com/auth/drive"]
 
@@ -21,7 +20,7 @@ _SCOPES = ["https://www.googleapis.com/auth/drive"]
 _thread_local = threading.local()
 
 # Module-level cached subfolder ID for Telegram uploads
-_telegram_subfolder_id: Optional[str] = None
+_telegram_subfolder_id: str | None = None
 
 
 def _get_service():
@@ -40,12 +39,12 @@ def _get_service():
                 f"No credentials found. Mount your OAuth token.json to {TOKEN_PATH} "
                 f"or your service account JSON to {SERVICE_ACCOUNT_PATH}."
             )
-            
+
         _thread_local.drive_service = build("drive", "v3", credentials=creds, cache_discovery=False)
     return _thread_local.drive_service
 
 
-def get_or_create_subfolder(folder_name: str, parent_id: Optional[str] = None) -> str:
+def get_or_create_subfolder(folder_name: str, parent_id: str | None = None) -> str:
     """
     Return the ID of a subfolder named *folder_name* inside the parent.
     Creates the subfolder if it does not already exist.  The result is
@@ -105,9 +104,9 @@ def get_or_create_subfolder(folder_name: str, parent_id: Optional[str] = None) -
 def upload(
     filepath: str,
     filename: str,
-    progress_hook=None,
-    folder_id: Optional[str] = None,
-) -> dict:
+    progress_hook: Callable[[float], None] | None = None,
+    folder_id: str | None = None,
+) -> dict[str, str]:
     """
     Upload *filepath* to Google Drive as *filename*.
 
@@ -135,7 +134,7 @@ def upload(
     service = _get_service()
 
     mime_type = _guess_mime(filename)
-    
+
     with open(filepath, 'rb') as fd:
         # 10MB chunk size for resumable uploads to allow progress reporting
         media = MediaIoBaseUpload(fd, mimetype=mime_type, resumable=True, chunksize=10 * 1024 * 1024)
@@ -157,11 +156,30 @@ def upload(
         )
 
         response = None
+        retries = 0
+        max_retries = 5
+
         while response is None:
-            status, response = request.next_chunk()
-            if status and progress_hook:
-                progress_hook(status.progress())
-                
+            try:
+                # num_retries=3 handles some HTTP-level errors automatically
+                status, response = request.next_chunk(num_retries=3)
+                if status and progress_hook:
+                    progress_hook(status.progress())
+                retries = 0  # Reset retries after a successful chunk
+            except (OSError, BrokenPipeError, ConnectionResetError, ConnectionError, TimeoutError):
+                retries += 1
+                if retries > max_retries:
+                    raise
+                time.sleep(2 ** retries)
+            except HttpError as e:
+                if e.resp.status in [403, 500, 502, 503, 504]:
+                    retries += 1
+                    if retries > max_retries:
+                        raise
+                    time.sleep(2 ** retries)
+                else:
+                    raise
+
         uploaded = response
 
     file_id: str = uploaded["id"]

@@ -9,3 +9,8 @@ credentials.json
 token.json
 *.session
 downloads/
+refactor_plan/
+
+# Dev
+.ruff_cache/
+.pytest_cache/

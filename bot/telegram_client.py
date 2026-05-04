@@ -98,7 +98,7 @@ async def download_file(
     # Download the file, limited by semaphore to prevent hanging on multiple files
     global _download_semaphore
     sem = _download_semaphore or asyncio.Semaphore(2)
-    
+
     async with sem:
         path = await client.download_media(
             message,
