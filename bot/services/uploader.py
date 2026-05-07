@@ -7,7 +7,7 @@ import uuid
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from ..drive import drive
+from .. import drive
 from ..handlers.reupload import REUPLOAD_JOBS, schedule_cleanup
 from ..utils import escape_html, safe_edit_caption_or_text
 

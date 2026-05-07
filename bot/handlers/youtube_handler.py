@@ -180,11 +180,11 @@ async def handle_download_callback(callback: CallbackQuery) -> None:
                 await asyncio.to_thread(
                     youtube.download, video_id, format_key, local_path, yt_progress_hook
                 )
-            except youtube.YouTubeError:
+            except youtube.YouTubeError as exc:
                 state.done = True
-            updater_task.cancel()
-            await safe_edit_caption_or_text(callback.message, escape_html(str(exc)), parse_mode="HTML")
-            return
+                updater_task.cancel()
+                await safe_edit_caption_or_text(callback.message, escape_html(str(exc)), parse_mode="HTML")
+                return
 
         # Resolve actual filename (yt-dlp may append extension)
         actual_path = resolve_actual_path(local_path, ext)
@@ -211,8 +211,6 @@ async def handle_download_callback(callback: CallbackQuery) -> None:
         cleanup_patterns = [
             local_path, actual_path, f"{base_name}*.*", f"{local_path}*"
         ]
-        paths_to_cleanup = list(set(glob.glob(p) for p in cleanup_patterns for p in glob.glob(p))) # glob them or let glob do it? Actually, glob.glob returns list, so we could just use cleanup_patterns in cleanup_glob
-        # Wait, schedule_cleanup expects paths. But I can just pass paths_to_cleanup to upload_to_drive_with_retry.
         paths_to_cleanup = []
         for pattern in cleanup_patterns:
             paths_to_cleanup.extend(glob.glob(pattern))
